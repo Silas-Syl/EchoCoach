@@ -8,6 +8,7 @@ EchoCoach 应用入口文件。
 4. 调用对话、纠错、评分和报告模块。
 """
 
+import os
 import gradio as gr
 
 from services.scene_service import load_scenes
@@ -191,6 +192,22 @@ def finish_practice(chat_history, current_scene_id, corrections):
 
     return report, "课后总结报告已生成。"
 
+def handle_audio_record(audio_file):
+    """处理用户录音文件。当前版本先确认录音可用，下一步再接入 ASR。"""
+
+    if audio_file is None:
+        return "还没有检测到录音，请先点击麦克风录一段英文。"
+
+    try:
+        file_size_kb = os.path.getsize(audio_file) / 1024
+        file_name = os.path.basename(audio_file)
+        return (
+            f"已收到录音文件：{file_name}，大小约 {file_size_kb:.1f} KB。\n"
+            "当前版本请在下方文本框手动输入你刚才说的英文内容。下一步会接入语音识别自动转写。"
+        )
+    except Exception as error:
+        return f"录音文件读取失败：{error}"
+
 
 with gr.Blocks(title="EchoCoach") as demo:
     gr.Markdown("# EchoCoach - AI 场景化英语口语陪练")
@@ -224,6 +241,21 @@ with gr.Blocks(title="EchoCoach") as demo:
 
     chatbot = gr.Chatbot(
         label="对话区"
+    )
+
+    gr.Markdown("## 语音输入")
+
+    audio_input = gr.Audio(
+        sources=["microphone"],
+        type="filepath",
+        label="录制你的英文回答"
+    )
+
+    audio_check_button = gr.Button("确认录音")
+
+    audio_status_box = gr.Textbox(
+        label="录音状态",
+        interactive=False
     )
 
     user_input = gr.Textbox(
@@ -312,6 +344,12 @@ with gr.Blocks(title="EchoCoach") as demo:
             report_box,
             status_box
         ]
+    )
+
+    audio_check_button.click(
+        fn=handle_audio_record,
+        inputs=[audio_input],
+        outputs=[audio_status_box]
     )
 
 
