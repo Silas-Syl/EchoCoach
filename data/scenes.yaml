@@ -1,0 +1,53 @@
+job_interview:
+  name: "Job Interview"
+  ai_role: "Interviewer"
+  user_role: "Candidate"
+  difficulty: "B1-B2"
+  opening_message: "Hi, welcome to the interview. Could you briefly introduce yourself?"
+  goals:
+    - "introduce yourself"
+    - "describe one project experience"
+    - "explain a challenge you solved"
+    - "ask one question to the interviewer"
+  keywords:
+    - "experience"
+    - "project"
+    - "challenge"
+    - "teamwork"
+    - "responsibility"
+
+restaurant_ordering:
+  name: "Restaurant Ordering"
+  ai_role: "Waiter"
+  user_role: "Customer"
+  difficulty: "A2-B1"
+  opening_message: "Good evening! Welcome to our restaurant. Do you have a reservation?"
+  goals:
+    - "ask for a table"
+    - "order food and drinks"
+    - "ask about recommendations"
+    - "pay the bill"
+  keywords:
+    - "menu"
+    - "recommend"
+    - "order"
+    - "bill"
+    - "reservation"
+
+business_meeting:
+  name: "Business Meeting"
+  ai_role: "Meeting Host"
+  user_role: "Team Member"
+  difficulty: "B1-B2"
+  opening_message: "Thanks for joining today's meeting. Could you give us a quick update on your progress?"
+  goals:
+    - "give a progress update"
+    - "explain a problem"
+    - "suggest a solution"
+    - "respond to follow-up questions"
+  keywords:
+    - "progress"
+    - "deadline"
+    - "issue"
+    - "solution"
+    - "next step"
