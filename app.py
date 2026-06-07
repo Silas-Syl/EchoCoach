@@ -7,9 +7,10 @@ EchoCoach 应用入口文件。
 3. 处理开始练习、发送回答、录音确认、结束练习；
 4. 调用 services 中的业务模块生成 AI 回复、纠错反馈、能力评分和课后报告。
 """
-from services.speech_service import speech_to_text, text_to_speech
+
 import gradio as gr
 
+from services.speech_service import speech_to_text, text_to_speech
 from services.scene_service import load_scenes
 from services.coach_service import generate_ai_reply
 from services.correction_service import correct_sentence, format_correction_history
@@ -17,8 +18,116 @@ from services.scoring_service import generate_scores
 from services.report_service import generate_report
 
 
-scenes = load_scenes()
+custom_css = """
+body, .gradio-container {
+    background: linear-gradient(135deg, #f7f4ff 0%, #eef4ff 48%, #fff6fb 100%);
+    font-family: "Inter", "Segoe UI", "Microsoft YaHei", sans-serif;
+    color: #2d3250;
+}
 
+.gradio-container {
+    padding-top: 18px !important;
+    padding-bottom: 28px !important;
+}
+
+#app-title {
+    text-align: center;
+    font-size: 38px;
+    font-weight: 900;
+    line-height: 1.1;
+    margin-bottom: 6px;
+    background: linear-gradient(90deg, #6a5cff, #3b82f6, #ff4fa3);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+#app-subtitle {
+    text-align: center;
+    color: #68708a;
+    font-size: 15px;
+    margin-bottom: 18px;
+}
+
+.section-title {
+    font-size: 17px;
+    font-weight: 800;
+    color: #5b57d9;
+    margin-top: 16px;
+    margin-bottom: 8px;
+}
+
+#status-box textarea {
+    background: linear-gradient(90deg, #efe7ff, #e6f2ff) !important;
+    color: #374151 !important;
+    font-weight: 600 !important;
+    border-radius: 14px !important;
+    border: 1px solid rgba(123, 97, 255, 0.15) !important;
+    box-shadow: 0 4px 14px rgba(106, 92, 255, 0.08);
+}
+
+#chatbot {
+    border-radius: 18px !important;
+    overflow: hidden !important;
+    border: 1px solid #e6e9f5 !important;
+    box-shadow: 0 8px 22px rgba(79, 70, 229, 0.08);
+}
+
+#correction-box,
+#history-box,
+#score-box,
+#report-box,
+#recognized-box,
+#audio-status-box {
+    border-radius: 16px !important;
+    box-shadow: 0 8px 22px rgba(95, 93, 175, 0.08);
+}
+
+textarea,
+input,
+select {
+    border-radius: 14px !important;
+}
+
+button {
+    border-radius: 16px !important;
+    font-weight: 700 !important;
+    transition: all 0.18s ease !important;
+    border: none !important;
+}
+
+button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 24px rgba(99, 102, 241, 0.18);
+}
+
+#start-btn,
+#start-btn button,
+#send-btn,
+#send-btn button,
+#voice-send-btn,
+#voice-send-btn button {
+    background: linear-gradient(90deg, #6a5cff, #3b82f6) !important;
+    color: white !important;
+}
+
+#end-btn,
+#end-btn button {
+    background: linear-gradient(90deg, #ff8b6a, #ff4f88) !important;
+    color: white !important;
+}
+
+#send-btn button,
+#send-btn {
+    min-height: 48px !important;
+}
+
+audio {
+    border-radius: 14px;
+}
+"""
+
+
+scenes = load_scenes()
 DEFAULT_SCENE_ID = "job_interview" if "job_interview" in scenes else list(scenes.keys())[0]
 
 
@@ -34,19 +143,6 @@ def get_scene(scene_id):
 def start_practice(scene_id):
     """
     开始一次新的口语练习。
-
-    返回值顺序必须与 start_button.click(outputs=[...]) 完全一致：
-    1. chatbot
-    2. chat_history_state
-    3. current_scene
-    4. corrections_state
-    5. score_state
-    6. status_box
-    7. user_input
-    8. correction_box
-    9. correction_history_box
-    10. score_box
-    11. report_box
     """
 
     if not scene_id:
@@ -92,18 +188,8 @@ def send_message(user_text, chat_history, current_scene_id, corrections, current
     1. AI 动态追问；
     2. 本轮纠错；
     3. 历史错误记录；
-    4. 当前能力评分。
-
-    返回值顺序必须与 send_button.click(outputs=[...]) 完全一致：
-    1. chatbot
-    2. chat_history_state
-    3. user_input
-    4. correction_box
-    5. correction_history_box
-    6. corrections_state
-    7. score_box
-    8. score_state
-    9. status_box
+    4. 当前能力评分；
+    5. AI 语音回答。
     """
 
     if chat_history is None:
@@ -127,6 +213,7 @@ def send_message(user_text, chat_history, current_scene_id, corrections, current
             corrections,
             current_score,
             current_score,
+            None,
             "⚠️ 请先输入一句英文回答。",
         )
 
@@ -147,12 +234,12 @@ def send_message(user_text, chat_history, current_scene_id, corrections, current
         chat_history=chat_history,
         user_message=None,
     )
+
     try:
         ai_audio_path = text_to_speech(ai_reply)
     except Exception as error:
         print("TTS error:", error)
         ai_audio_path = None
-    
 
     chat_history = chat_history + [
         {
@@ -187,11 +274,7 @@ def send_message(user_text, chat_history, current_scene_id, corrections, current
 def handle_audio_record(audio):
     """
     处理用户录音。
-
-    当前轻量版：
-    1. 只确认是否收到录音文件；
-    2. 暂时不做 ASR；
-    3. 用户继续在文本框中手动输入英文。
+    当前函数保留作兼容，主要语音流程使用 handle_audio_and_send。
     """
 
     if audio is None:
@@ -199,9 +282,10 @@ def handle_audio_record(audio):
 
     return "✅ 已收到录音文件。当前版本请在文本框中确认或输入识别内容，然后点击发送。"
 
+
 def handle_audio_and_send(audio, chat_history, current_scene_id, corrections, current_score):
     """
-    录音 → ASR 识别 → 自动发送 → AI 回复 → AI 语音回答
+    录音 → ASR 识别 → 自动发送 → AI 回复 → AI 语音回答。
     """
 
     if chat_history is None:
@@ -292,10 +376,6 @@ def handle_audio_and_send(audio, chat_history, current_scene_id, corrections, cu
 def end_practice(chat_history, current_scene_id, corrections, score):
     """
     结束练习，生成个性化课后总结报告。
-
-    返回值顺序必须与 end_button.click(outputs=[...]) 完全一致：
-    1. report_box
-    2. status_box
     """
 
     if not chat_history or len(chat_history) <= 1:
@@ -322,7 +402,15 @@ def end_practice(chat_history, current_scene_id, corrections, score):
 
 with gr.Blocks(title="EchoCoach") as demo:
 
-    gr.Markdown("# 🎙️ EchoCoach — AI 场景化英语口语陪练")
+    gr.Markdown(
+        """
+        <div id="app-title">🎙️ EchoCoach</div>
+        <div id="app-subtitle">
+            AI 场景化英语口语陪练 · 更自然的对话练习，更直观的语音与学习反馈
+        </div>
+        """
+    )
+
     gr.Markdown(
         "选择场景 → 开始练习 → 输入英文回答 → 获得 AI 追问 + 纠错 + 评分 → 结束后查看总结报告"
     )
@@ -336,82 +424,114 @@ with gr.Blocks(title="EchoCoach") as demo:
         label="当前状态",
         value="请选择场景并点击「开始练习」。",
         interactive=False,
+        elem_id="status-box",
     )
 
     with gr.Row():
 
         with gr.Column(scale=3):
 
+            gr.Markdown("<div class='section-title'>🎯 场景设置与对话练习</div>")
+
             scene_dropdown = gr.Dropdown(
                 choices=list(scenes.keys()),
                 value=DEFAULT_SCENE_ID,
                 label="选择练习场景",
+                elem_id="scene-dropdown",
             )
 
-            start_button = gr.Button("▶️ 开始练习", variant="primary")
+            start_button = gr.Button(
+                "✨ 开始练习",
+                variant="primary",
+                elem_id="start-btn"
+            )
 
             chatbot = gr.Chatbot(
                 label="对话区",
                 height=420,
+                elem_id="chatbot"
             )
 
             user_input = gr.Textbox(
                 label="你的英文回答",
-                placeholder="请在这里输入英文，例如：I very like backend development.",
+                placeholder="请在这里输入英文，例如：I really like backend development.",
                 lines=2,
+                elem_id="user-input",
             )
 
             with gr.Row():
-                send_button = gr.Button("📨 发送回答", variant="primary", scale=3)
-                end_button = gr.Button("🔚 结束练习", variant="stop", scale=1)
+                send_button = gr.Button(
+                    "📨 发送回答",
+                    variant="primary",
+                    scale=3,
+                    elem_id="send-btn"
+                )
+                end_button = gr.Button(
+                    "🛑 结束练习",
+                    variant="stop",
+                    scale=1,
+                    elem_id="end-btn"
+                )
 
-            gr.Markdown("### 🎤 语音输入")
+            gr.Markdown("<div class='section-title'>🎤 语音输入</div>")
 
             audio_input = gr.Audio(
                 sources=["microphone"],
                 type="filepath",
-                label="录音（录完后点击确认）",
+                label="录音（录完后点击发送）",
             )
 
-            confirm_audio_button = gr.Button("✅ 确认录音")
-
-            audio_status = gr.Textbox(
-                label="录音状态",
-                interactive=False,
-                value="等待录音...",
+            confirm_audio_button = gr.Button(
+                "🎙️ 语音发送 / 继续对话",
+                elem_id="voice-send-btn"
             )
 
             recognized_text_box = gr.Textbox(
                 label="语音识别结果",
                 interactive=False,
-                placeholder="录音识别出的英文会显示在这里。"
+                placeholder="识别出的英文会显示在这里。",
+                elem_id="recognized-box"
             )
+
+            audio_status = gr.Textbox(
+                label="录音状态",
+                interactive=False,
+                value="等待录音...",
+                elem_id="audio-status-box"
+            )
+
+            gr.Markdown("<div class='section-title'>🔊 AI 语音回答</div>")
 
             ai_audio_output = gr.Audio(
-                label="🔊 AI 语音回答",
+                label="AI 语音回答",
+                interactive=False,
                 autoplay=True,
-                interactive=False
             )
-
 
         with gr.Column(scale=2):
 
+            gr.Markdown("<div class='section-title'>📝 本轮纠错反馈</div>")
             correction_box = gr.JSON(
-                label="📝 本轮纠错反馈",
+                label="",
+                elem_id="correction-box"
             )
 
+            gr.Markdown("<div class='section-title'>📚 历史错误记录</div>")
             correction_history_box = gr.Markdown(
-                label="📚 历史错误记录",
                 value="暂无历史错误记录。",
+                elem_id="history-box"
             )
 
+            gr.Markdown("<div class='section-title'>📊 当前能力评分</div>")
             score_box = gr.JSON(
-                label="📊 当前能力评分",
+                label="",
+                elem_id="score-box"
             )
 
+            gr.Markdown("<div class='section-title'>📋 课后总结报告</div>")
             report_box = gr.Markdown(
-                label="📋 课后总结报告",
                 value="练习结束后，这里会生成本次口语练习总结。",
+                elem_id="report-box"
             )
 
     start_button.click(
@@ -488,7 +608,6 @@ with gr.Blocks(title="EchoCoach") as demo:
             score_state,
         ],
         outputs=[
-            
             chatbot,
             chat_history_state,
             audio_input,
@@ -504,7 +623,6 @@ with gr.Blocks(title="EchoCoach") as demo:
             audio_status,
         ],
     )
-
 
     end_button.click(
         fn=end_practice,
@@ -522,4 +640,7 @@ with gr.Blocks(title="EchoCoach") as demo:
 
 
 if __name__ == "__main__":
-    demo.launch(theme=gr.themes.Soft())
+    demo.launch(
+        theme=gr.themes.Soft(),
+        css=custom_css
+    )
