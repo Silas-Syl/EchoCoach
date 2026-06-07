@@ -1,178 +1,181 @@
 """
-英文纠错模块。
+AI 纠错服务。
 
-这个文件负责检查用户输入的英文回答，并给出轻量级纠错建议。
-
-当前版本说明：
-1. 先不接真实大模型；
-2. 使用规则匹配实现基础语法和表达纠错；
-3. 返回结构化结果，方便页面展示；
-4. 后续可以替换为 LLM 纠错服务。
+负责：
+1. 调用大模型检查用户英文回答；
+2. 输出结构化纠错结果；
+3. 提供历史纠错 Markdown 展示；
+4. AI 调用失败时提供兜底纠错，保证 Demo 不崩。
 """
 
+from services.llm_service import call_llm_json
 
-def build_no_input_feedback():
-    """
-    当用户没有输入内容时，返回提示。
-    """
+
+def _fallback_correction(sentence):
+    """AI 调用失败时的兜底纠错。"""
+
+    text = sentence.strip()
+
+    if "very like" in text.lower():
+        return {
+            "original": sentence,
+            "corrected": text.replace("very like", "really like"),
+            "error_type": "expression",
+            "explanation": "英文里 very 通常修饰形容词，不能直接修饰 like，建议用 really like。",
+            "better_expression": "I am very interested in this topic.",
+            "severity": "medium",
+            "has_error": True
+        }
 
     return {
-        "原句": "",
-        "修改后": "",
-        "错误类型": "无输入",
-        "问题说明": "没有检测到英文输入。",
-        "更自然表达": "",
-        "严重程度": "低"
+        "original": sentence,
+        "corrected": sentence,
+        "error_type": "none",
+        "explanation": "没有发现明显语法错误，可以继续练习更自然、更具体的表达。",
+        "better_expression": sentence,
+        "severity": "low",
+        "has_error": False
     }
 
 
-def build_no_error_feedback(user_text: str):
-    """
-    当没有发现明显错误时，返回鼓励和表达优化建议。
-    """
+def _normalize_correction(data, sentence):
+    """统一 AI 返回格式，避免字段缺失导致页面报错。"""
+
+    if not isinstance(data, dict):
+        return _fallback_correction(sentence)
+
+    has_error = data.get("has_error", True)
 
     return {
-        "原句": user_text,
-        "修改后": user_text,
-        "错误类型": "未发现明显错误",
-        "问题说明": "当前轻量版规则没有发现明显语法错误。",
-        "更自然表达": "You can add one specific example to make your answer more natural.",
-        "严重程度": "低"
+        "original": data.get("original") or sentence,
+        "corrected": data.get("corrected") or sentence,
+        "error_type": data.get("error_type") or "expression",
+        "explanation": data.get("explanation") or "暂无解释。",
+        "better_expression": data.get("better_expression") or data.get("corrected") or sentence,
+        "severity": data.get("severity") or "medium",
+        "has_error": bool(has_error)
     }
 
 
-def correct_common_expression(user_text: str, lower_text: str):
+def correct_sentence(sentence):
     """
-    检查常见表达错误。
+    对用户输入的一句英文进行 AI 纠错。
 
-    当前主要覆盖一些初学者高频错误。
+    返回格式：
+    {
+        "original": "...",
+        "corrected": "...",
+        "error_type": "grammar/expression/vocabulary/pronunciation/none",
+        "explanation": "...",
+        "better_expression": "...",
+        "severity": "low/medium/high",
+        "has_error": true/false
+    }
     """
 
-    if "i very like" in lower_text:
-        corrected = user_text.replace("I very like", "I really like")
-        corrected = corrected.replace("i very like", "I really like")
-
+    if not sentence or not sentence.strip():
         return {
-            "原句": user_text,
-            "修改后": corrected,
-            "错误类型": "表达错误",
-            "问题说明": "英文中 very 通常修饰形容词，不直接修饰 like 这样的动词。这里更自然的说法是 really like。",
-            "更自然表达": "I am very interested in this opportunity.",
-            "严重程度": "中"
+            "original": "",
+            "corrected": "",
+            "error_type": "none",
+            "explanation": "用户没有输入内容。",
+            "better_expression": "",
+            "severity": "low",
+            "has_error": False
         }
 
-    if "more better" in lower_text:
-        corrected = user_text.replace("more better", "better")
-        corrected = corrected.replace("More better", "Better")
+    messages = [
+        {
+            "role": "system",
+            "content": """
+You are an English speaking coach.
 
-        return {
-            "原句": user_text,
-            "修改后": corrected,
-            "错误类型": "语法错误",
-            "问题说明": "better 本身已经是比较级，不需要再加 more。",
-            "更自然表达": corrected,
-            "严重程度": "中"
+Your task is to correct one English sentence from a learner.
+
+Return ONLY valid JSON. Do not use markdown. Do not add extra text.
+
+JSON schema:
+{
+  "original": "the original user sentence",
+  "corrected": "the corrected sentence",
+  "error_type": "grammar | expression | vocabulary | word_order | none",
+  "explanation": "explain the problem in Chinese, short and clear",
+  "better_expression": "a more natural English expression",
+  "severity": "low | medium | high",
+  "has_error": true
+}
+
+Rules:
+1. If the sentence has no obvious error, set error_type to "none" and has_error to false.
+2. The explanation should be in Chinese because the learner is Chinese.
+3. The corrected and better_expression fields must be in English.
+4. Be practical and concise.
+""".strip()
+        },
+        {
+            "role": "user",
+            "content": sentence.strip()
         }
+    ]
 
-    return None
+    try:
+        data = call_llm_json(messages, temperature=0.2)
+        return _normalize_correction(data, sentence)
+
+    except Exception as error:
+        print("AI correction error:", error)
+        return _fallback_correction(sentence)
 
 
-def correct_subject_verb_agreement(user_text: str, lower_text: str):
+def format_correction_history(corrections):
     """
-    检查简单的主谓一致错误。
-    """
-
-    if "i has" in lower_text:
-        corrected = user_text.replace("I has", "I have")
-        corrected = corrected.replace("i has", "I have")
-
-        return {
-            "原句": user_text,
-            "修改后": corrected,
-            "错误类型": "语法错误",
-            "问题说明": "第一人称 I 后面应该使用 have，而不是 has。",
-            "更自然表达": corrected,
-            "严重程度": "高"
-        }
-
-    if "he have" in lower_text:
-        corrected = user_text.replace("he have", "he has")
-        corrected = corrected.replace("He have", "He has")
-
-        return {
-            "原句": user_text,
-            "修改后": corrected,
-            "错误类型": "语法错误",
-            "问题说明": "第三人称单数 he 后面应该使用 has。",
-            "更自然表达": corrected,
-            "严重程度": "中"
-        }
-
-    if "she have" in lower_text:
-        corrected = user_text.replace("she have", "she has")
-        corrected = corrected.replace("She have", "She has")
-
-        return {
-            "原句": user_text,
-            "修改后": corrected,
-            "错误类型": "语法错误",
-            "问题说明": "第三人称单数 she 后面应该使用 has。",
-            "更自然表达": corrected,
-            "严重程度": "中"
-        }
-
-    return None
-
-
-def check_answer_completeness(user_text: str):
-    """
-    检查回答是否过短。
-
-    口语训练中，太短的回答不利于练习表达能力。
+    把历史纠错记录转成 Markdown，方便 Gradio 页面展示。
     """
 
-    word_count = len(user_text.split())
+    if not corrections:
+        return "暂无历史错误记录。"
 
-    if word_count < 5:
-        return {
-            "原句": user_text,
-            "修改后": user_text,
-            "错误类型": "表达不完整",
-            "问题说明": "你的回答可以理解，但内容比较短。建议使用完整句子，并补充一个具体例子。",
-            "更自然表达": "Try to answer with a complete sentence and one specific example.",
-            "严重程度": "低"
-        }
+    error_items = []
 
-    return None
+    for index, item in enumerate(corrections, start=1):
+        if not isinstance(item, dict):
+            continue
 
+        has_error = item.get("has_error", True)
+        error_type = item.get("error_type", "expression")
 
-def correct_sentence(user_text: str):
-    """
-    对用户输入的英文句子进行轻量纠错。
+        if not has_error or error_type == "none":
+            continue
 
-    返回结构化字典，便于 Gradio 页面展示。
-    """
+        original = item.get("original", "")
+        corrected = item.get("corrected", "")
+        better = item.get("better_expression", "")
+        explanation = item.get("explanation", "")
+        severity = item.get("severity", "medium")
 
-    if not user_text or not user_text.strip():
-        return build_no_input_feedback()
+        error_items.append(
+            f"""
+### {len(error_items) + 1}. {error_type} / {severity}
 
-    cleaned_text = user_text.strip()
-    lower_text = cleaned_text.lower()
+**原句：**
 
-    # 先检查常见表达错误。
-    expression_feedback = correct_common_expression(cleaned_text, lower_text)
-    if expression_feedback:
-        return expression_feedback
+> {original}
 
-    # 再检查简单主谓一致错误。
-    grammar_feedback = correct_subject_verb_agreement(cleaned_text, lower_text)
-    if grammar_feedback:
-        return grammar_feedback
+**修改后：**
 
-    # 再检查回答是否过短。
-    completeness_feedback = check_answer_completeness(cleaned_text)
-    if completeness_feedback:
-        return completeness_feedback
+> {corrected}
 
-    # 如果没有命中规则，返回无明显错误。
-    return build_no_error_feedback(cleaned_text)
+**更自然表达：**
+
+> {better}
+
+**说明：**
+
+{explanation}
+""".strip()
+        )
+
+    if not error_items:
+        return "目前没有明显历史错误，继续保持。"
+
+    return "\n\n---\n\n".join(error_items)
