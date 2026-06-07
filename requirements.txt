@@ -2,3 +2,5 @@ gradio
 pyyaml
 python-dotenv
 requests
+requests
+python-dotenv
