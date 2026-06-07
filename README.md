@@ -3,6 +3,7 @@ AI 场景化英语口语陪练
 Demo视频：
 方式一：bilibili
 【EchoCoach_Demo】https://www.bilibili.com/video/BV1ZJEb6oE7w?vd_source=a37bd63517883796533b880385b9b487
+
 方式二：
 通过网盘分享的文件：EchoCoach_Demo.mp4
 链接: https://pan.baidu.com/s/1FD2BMKRZ3pLZzz74TcuTqA?pwd=9tsx 提取码: 9tsx
